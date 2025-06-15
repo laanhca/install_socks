@@ -7,7 +7,12 @@ Tự động cài đặt và cấu hình SOCKS5 proxy server (Dante) trên Ubunt
 Chạy lệnh sau để clone repository và cài đặt SOCKS5 server:
 
 ```bash
-git clone https://github.com/laanhca/install_socks.git && cd install_socks && chmod +x install.sh && sudo ./install.sh
+git clone https://github.com/laanhca/install_socks.git && cd install_socks && chmod +x install_socks5.sh && sudo ./install_socks5.sh
+```
+Chạy lệnh sau để clone repository và cài đặt HTTP server:
+
+```bash
+git clone https://github.com/laanhca/install_socks.git && cd install_socks && chmod +x install_http.sh && sudo ./install_http.sh
 ```
 
 ## Tính năng
