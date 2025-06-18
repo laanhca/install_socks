@@ -1,34 +1,26 @@
 #!/usr/bin/env bash
-# SOCKS5 (Dante) auto installer for Ubuntu/Debian/RedHat - Default Configuration
+# HTTP (Squid) proxy auto installer for Ubuntu/Debian/RedHat with basic auth
 
 set -e
 
-
-# Function to draw box around text
+# Function to draw box
 draw_box() {
     local title="$1"
     local content="$2"
     local width=60
-    
-    # Colors
+
     local GREEN='\033[0;32m'
-    local BLUE='\033[0;34m'
     local YELLOW='\033[1;33m'
-    local NC='\033[0m' # No Color
+    local NC='\033[0m'
     local BOLD='\033[1m'
-    
+
     echo ""
     echo -e "${GREEN}┌$(printf '─%.0s' $(seq 1 $((width-2))))┐${NC}"
     echo -e "${GREEN}│${BOLD}${YELLOW} $(printf "%-*s" $((width-4)) "$title") ${NC}${GREEN}│${NC}"
     echo -e "${GREEN}├$(printf '─%.0s' $(seq 1 $((width-2))))┤${NC}"
-    
-    # Split content by newlines and format each line
     while IFS= read -r line; do
-        if [[ -n "$line" ]]; then
-            echo -e "${GREEN}│${NC} $(printf "%-*s" $((width-4)) "$line") ${GREEN}│${NC}"
-        fi
+        echo -e "${GREEN}│${NC} $(printf "%-*s" $((width-4)) "$line") ${GREEN}│${NC}"
     done <<< "$content"
-    
     echo -e "${GREEN}└$(printf '─%.0s' $(seq 1 $((width-2))))┘${NC}"
     echo ""
 }
@@ -46,67 +38,50 @@ else
     echo "❌ Cannot detect OS."; exit 1
 fi
 
-# Default settings - SOCKS5 with automatic credentials
-choice="1"
-config_mode="1"
-
-# Common variables
 EXT_IF=$(ip route | awk '/default/ {print $5; exit}')
 EXT_IF=${EXT_IF:-eth0}
 PUBLIC_IP=$(curl -4 -s https://api.ipify.org)
 
-install_socks5() {
+install_http_proxy() {
     local USERNAME PASSWORD PORT
-    
-    # Automatic mode - generate random credentials
-    USERNAME="user_$(tr -dc 'a-z0-9' </dev/urandom | head -c8)"
-    PASSWORD="$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c12)"
-    PORT=$(shuf -i 1025-65000 -n1)
+    USERNAME="user_for_socks5"
+    PASSWORD="t9X@rP2#Vm8wZ!dLq7&E"
+    PORT=20326
 
-    # Install packages (silently)
     if [ "$OS" = "debian" ]; then
         apt-get update >/dev/null 2>&1
-        DEBIAN_FRONTEND=noninteractive apt-get install -y dante-server curl iptables iptables-persistent >/dev/null 2>&1
+        apt-get install -y squid apache2-utils curl iptables iptables-persistent >/dev/null 2>&1
     else
-        yum install -y epel-release >/dev/null 2>&1
-        yum install -y dante-server curl iptables-services >/dev/null 2>&1
+        yum install -y squid httpd-tools curl iptables-services >/dev/null 2>&1
         systemctl enable iptables >/dev/null 2>&1
         systemctl start iptables >/dev/null 2>&1
     fi
 
-    # Create user (silently)
-    useradd -M -N -s /usr/sbin/nologin "$USERNAME" >/dev/null 2>&1 || true
-    echo "${USERNAME}:${PASSWORD}" | chpasswd >/dev/null 2>&1
+    # Setup auth
+    htpasswd -b -c /etc/squid/passwd "$USERNAME" "$PASSWORD" >/dev/null 2>&1
 
-    # Configure Dante
-    [ -f /etc/danted.conf ] && cp /etc/danted.conf /etc/danted.conf.bak.$(date +%F_%T) >/dev/null 2>&1
-    cat > /etc/danted.conf <<EOF
-logoutput: syslog /var/log/danted.log
+    # Backup config
+    cp /etc/squid/squid.conf /etc/squid/squid.conf.bak.$(date +%F_%T) >/dev/null 2>&1
 
-internal: 0.0.0.0 port = ${PORT}
-external: ${EXT_IF}
+    # Minimal Squid config with auth
+    cat > /etc/squid/squid.conf <<EOF
+auth_param basic program /usr/lib/squid/basic_ncsa_auth /etc/squid/passwd
+auth_param basic realm Squid Proxy
+acl authenticated proxy_auth REQUIRED
+http_access allow authenticated
+http_access deny all
 
-method: pam
-user.privileged: root
-user.notprivileged: nobody
+http_port ${PORT}
+visible_hostname proxy-server
 
-client pass {
-    from: 0.0.0.0/0 to: 0.0.0.0/0
-    log: connect disconnect error
-}
-
-socks pass {
-    from: 0.0.0.0/0 to: 0.0.0.0/0
-    command: bind connect udpassociate
-    log: connect disconnect error
-}
+cache deny all
 EOF
 
-    chmod 644 /etc/danted.conf
-    systemctl restart danted >/dev/null 2>&1
-    systemctl enable danted >/dev/null 2>&1
+    chmod 644 /etc/squid/squid.conf
+    systemctl restart squid >/dev/null 2>&1
+    systemctl enable squid >/dev/null 2>&1
 
-    # Open firewall (silently)
+    # Firewall
     if command -v ufw >/dev/null 2>&1; then
         ufw allow "${PORT}/tcp" >/dev/null 2>&1
     else
@@ -114,10 +89,10 @@ EOF
         iptables-save > /etc/iptables/rules.v4 >/dev/null 2>&1 || true
     fi
 
-    # Return formatted info
-    echo "socks5://${PUBLIC_IP}:${PORT}:${USERNAME}:${PASSWORD}"
+    # Return proxy info
+    echo "http://${USERNAME}:${PASSWORD}@${PUBLIC_IP}:${PORT}"
 }
 
-echo "🚀 Installing SOCKS5 server with automatic configuration..."
-socks_info=$(install_socks5)
-draw_box "🧦 SOCKS5 PROXY SERVER" "$socks_info"
+echo "🚀 Installing HTTP proxy (Squid) with basic authentication..."
+proxy_info=$(install_http_proxy)
+draw_box "🌐 HTTP PROXY SERVER" "$proxy_info"

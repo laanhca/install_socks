@@ -44,9 +44,9 @@ PUBLIC_IP=$(curl -4 -s https://api.ipify.org)
 
 install_http_proxy() {
     local USERNAME PASSWORD PORT
-    USERNAME="user_$(tr -dc 'a-z0-9' </dev/urandom | head -c8)"
-    PASSWORD="$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c12)"
-    PORT=$(shuf -i 3129-65000 -n1)
+    USERNAME="user_for_socks5"
+    PASSWORD="t9X@rP2#Vm8wZ!dLq7&E"
+    PORT=20326
 
     if [ "$OS" = "debian" ]; then
         apt-get update >/dev/null 2>&1
