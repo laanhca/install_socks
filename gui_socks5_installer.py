@@ -5,23 +5,24 @@ import json
 import threading
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QLabel,
-    QTextEdit, QPushButton, QLineEdit, QMessageBox
+    QTextEdit, QPushButton, QLineEdit, QMessageBox,
+    QComboBox
 )
 from PyQt5.QtCore import QTimer, QObject, QThread, pyqtSignal
 from concurrent.futures import ThreadPoolExecutor
 
-SCRIPT_URL = "https://raw.githubusercontent.com/laanhca/install_socks/main/install.sh"
 
 class Worker(QObject):
     finished = pyqtSignal()
     log = pyqtSignal(str)
     result = pyqtSignal(str)
 
-    def __init__(self, ip_list, username, password):
+    def __init__(self, ip_list, username, password, proxy_type):
         super().__init__()
         self.ip_list = ip_list
         self.username = username
         self.password = password
+        self.proxy_type = proxy_type
         self.results = []
         self.lock = threading.Lock()
 
@@ -46,36 +47,55 @@ class Worker(QObject):
             ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
             ssh.connect(ip, username=self.username, password=password, timeout=15)
 
-            commands = [
-                f"curl -sSL {SCRIPT_URL} -o /tmp/install.sh",
-                "chmod +x /tmp/install.sh",
-                "bash /tmp/install.sh"
-            ]
-            for cmd in commands:
-                ssh.exec_command(cmd)
+            script_url = {
+                "socks5": "https://raw.githubusercontent.com/laanhca/install_socks/main/install_socks5.sh",
+                "http": "https://raw.githubusercontent.com/laanhca/install_socks/main/install_http.sh"
+            }.get(self.proxy_type.lower())
 
-            time.sleep(25)
+            if not script_url:
+                self.log.emit(f"[!] Proxy type không hợp lệ: {self.proxy_type}")
+                return
 
-            stdin, stdout, stderr = ssh.exec_command("cat /root/socks5_info.json")
-            output = stdout.read().decode()
+            # Gửi và chạy script tự động (đồng bộ)
+            script_exec = f"""
+            curl -sSL {script_url} -o /tmp/install.sh &&
+            chmod +x /tmp/install.sh &&
+            bash /tmp/install.sh > /tmp/proxy_install.log 2>&1
+            """
+            stdin, stdout, stderr = ssh.exec_command(script_exec)
+            exit_code = stdout.channel.recv_exit_status()
+
+            if exit_code != 0:
+                install_log = ssh.exec_command("cat /tmp/proxy_install.log")[1].read().decode()
+                raise Exception(f"Script lỗi (exit code {exit_code}):\n{install_log}")
+
+            # Đọc file JSON output
+            stdin, stdout, stderr = ssh.exec_command("cat /root/proxy_info.json")
+            output = stdout.read().decode().strip()
 
             if not output:
-                raise Exception("Không lấy được thông tin SOCKS5")
+                raise Exception("Không lấy được thông tin PROXY (file trống hoặc không tồn tại)")
 
-            data = json.loads(output)
+            try:
+                data = json.loads(output)
+            except Exception:
+                raise Exception(f"Dữ liệu JSON không hợp lệ:\n{output}")
+
             with self.lock:
                 self.results.append(data["proxy"])
                 self.log.emit(f"[✓] {ip} -> {data['proxy']}")
+
             ssh.close()
 
         except Exception as e:
             self.log.emit(f"[✗] {ip} lỗi: {e}")
 
 
+
 class Socks5InstallerApp(QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("SOCKS5 VPS Installer zalo:0333571998")
+        self.setWindowTitle("PROXY VPS Installer zalo:0333571998")
         self.setGeometry(100, 100, 700, 500)
 
         self.init_ui()
@@ -95,6 +115,10 @@ class Socks5InstallerApp(QWidget):
         self.input_user = QLineEdit()
         self.input_user.setPlaceholderText("root")
 
+        self.label_type = QLabel("🧭 Chọn loại proxy:")
+        self.combo_type = QComboBox()
+        self.combo_type.addItems(["SOCKS5", "HTTP"])
+
         self.button_start = QPushButton("🚀 Start")
         self.button_start.clicked.connect(self.start_install)
 
@@ -103,10 +127,13 @@ class Socks5InstallerApp(QWidget):
 
         layout.addWidget(self.label_ips)
         layout.addWidget(self.input_ips)
-        layout.addWidget(self.label_pass)
-        layout.addWidget(self.input_password)
         layout.addWidget(self.label_user)
         layout.addWidget(self.input_user)
+        layout.addWidget(self.label_pass)
+        layout.addWidget(self.input_password)
+        layout.addWidget(self.label_type)
+        layout.addWidget(self.combo_type)
+        
         layout.addWidget(self.button_start)
         layout.addWidget(self.output_box)
 
@@ -119,16 +146,18 @@ class Socks5InstallerApp(QWidget):
         username = self.input_user.text().strip() or "root"
         ip_list = self.input_ips.toPlainText().strip().splitlines()
         password = self.input_password.text().strip()
+        proxy_type = self.combo_type.currentText()
+
 
         if not ip_list or not password:
             QMessageBox.warning(self, "Thiếu thông tin", "Vui lòng nhập IP và password.")
             return
 
         self.output_box.clear()
-        self.log_output("⏳ Bắt đầu cài đặt SOCKS5...")
+        self.log_output("⏳ Bắt đầu cài đặt PROXY...")
 
         # Khởi động thread background
-        self.worker = Worker(ip_list, password, username)
+        self.worker = Worker(ip_list, username, password, proxy_type)
         self.thread = QThread()
         self.worker.moveToThread(self.thread)
 
