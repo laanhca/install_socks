@@ -30,40 +30,45 @@ OS=""
 if [ -f /etc/os-release ]; then
     . /etc/os-release
     case "$ID" in
-        ubuntu|debian) OS="debian" ;;        
-        amzn|centos|rhel|rocky|almalinux) OS="redhat" ;;        
-        *) echo "❌ Unsupported OS: $ID"; exit 1 ;;    
+        ubuntu|debian) OS="debian" ;;
+        amzn|centos|rhel|rocky|almalinux) OS="redhat" ;;
+        *) echo "❌ Unsupported OS: $ID"; exit 1 ;;
     esac
 else
     echo "❌ Cannot detect OS."; exit 1
 fi
 
+# Detect external interface and IP
 EXT_IF=$(ip route | awk '/default/ {print $5; exit}')
 EXT_IF=${EXT_IF:-eth0}
-PUBLIC_IP=$(curl -4 -s https://api.ipify.org)
+PUBLIC_IP=$(curl -4 -s --max-time 5 https://api.ipify.org || echo "IP_NOT_FOUND")
 
 install_http_proxy() {
-    local USERNAME PASSWORD PORT
-    USERNAME="user_for_socks5"
-    PASSWORD="t9X@rP2#Vm8wZ!dLq7&E"
-    PORT=20326
+    local USERNAME="user_for_socks5"
+    local PASSWORD="t9X@rP2#Vm8wZ!dLq7&E"
+    local PORT=20326
+
+    echo "[*] Cài đặt Squid proxy cho hệ điều hành: $OS..."
 
     if [ "$OS" = "debian" ]; then
-        apt-get update >/dev/null 2>&1
-        apt-get install -y squid apache2-utils curl iptables iptables-persistent >/dev/null 2>&1
+        apt-get update -y
+        DEBIAN_FRONTEND=noninteractive apt-get install -y squid apache2-utils curl iptables iptables-persistent
     else
-        yum install -y squid httpd-tools curl iptables-services >/dev/null 2>&1
-        systemctl enable iptables >/dev/null 2>&1
-        systemctl start iptables >/dev/null 2>&1
+        yum install -y squid httpd-tools curl iptables-services
+        systemctl enable iptables
+        systemctl start iptables
     fi
 
-    # Setup auth
-    htpasswd -b -c /etc/squid/passwd "$USERNAME" "$PASSWORD" >/dev/null 2>&1
+    # Ensure Squid config folder exists
+    mkdir -p /etc/squid
+
+    # Setup basic auth
+    htpasswd -b -c /etc/squid/passwd "$USERNAME" "$PASSWORD"
 
     # Backup config
-    cp /etc/squid/squid.conf /etc/squid/squid.conf.bak.$(date +%F_%T) >/dev/null 2>&1
+    cp /etc/squid/squid.conf /etc/squid/squid.conf.bak.$(date +%F_%T) || true
 
-    # Minimal Squid config with auth
+    # Create new config
     cat > /etc/squid/squid.conf <<EOF
 auth_param basic program /usr/lib/squid/basic_ncsa_auth /etc/squid/passwd
 auth_param basic realm Squid Proxy
@@ -78,21 +83,22 @@ cache deny all
 EOF
 
     chmod 644 /etc/squid/squid.conf
-    systemctl restart squid >/dev/null 2>&1
-    systemctl enable squid >/dev/null 2>&1
 
-    # Firewall
+    # Restart squid
+    systemctl restart squid
+    systemctl enable squid
+
+    # Open firewall
     if command -v ufw >/dev/null 2>&1; then
-        ufw allow "${PORT}/tcp" >/dev/null 2>&1
+        ufw allow "${PORT}/tcp" || true
     else
-        iptables -I INPUT -p tcp --dport "${PORT}" -j ACCEPT >/dev/null 2>&1
-        iptables-save > /etc/iptables/rules.v4 >/dev/null 2>&1 || true
+        iptables -I INPUT -p tcp --dport "${PORT}" -j ACCEPT || true
+        iptables-save > /etc/iptables/rules.v4 || true
     fi
 
-    # Return proxy info
     echo "http://${USERNAME}:${PASSWORD}@${PUBLIC_IP}:${PORT}"
 }
 
-echo "🚀 Installing HTTP proxy (Squid) with basic authentication..."
+echo "🚀 Đang cài đặt HTTP proxy (Squid) với xác thực cơ bản..."
 proxy_info=$(install_http_proxy)
 draw_box "🌐 HTTP PROXY SERVER" "$proxy_info"

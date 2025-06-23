@@ -17,9 +17,10 @@ class Worker(QObject):
     log = pyqtSignal(str)
     result = pyqtSignal(str)
 
-    def __init__(self, ip_list, password):
+    def __init__(self, ip_list, username, password):
         super().__init__()
         self.ip_list = ip_list
+        self.username = username
         self.password = password
         self.results = []
         self.lock = threading.Lock()
@@ -43,7 +44,7 @@ class Worker(QObject):
             self.log.emit(f"[+] Đang kết nối {ip} ...")
             ssh = paramiko.SSHClient()
             ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            ssh.connect(ip, username="root", password=password, timeout=15)
+            ssh.connect(ip, username=self.username, password=password, timeout=15)
 
             commands = [
                 f"curl -sSL {SCRIPT_URL} -o /tmp/install.sh",
@@ -74,7 +75,7 @@ class Worker(QObject):
 class Socks5InstallerApp(QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("SOCKS5 VPS Installer")
+        self.setWindowTitle("SOCKS5 VPS Installer zalo:0333571998")
         self.setGeometry(100, 100, 700, 500)
 
         self.init_ui()
@@ -90,6 +91,10 @@ class Socks5InstallerApp(QWidget):
         self.input_password = QLineEdit()
         self.input_password.setEchoMode(QLineEdit.Password)
 
+        self.label_user = QLabel("👤 Nhập SSH username (mặc định: root):")
+        self.input_user = QLineEdit()
+        self.input_user.setPlaceholderText("root")
+
         self.button_start = QPushButton("🚀 Start")
         self.button_start.clicked.connect(self.start_install)
 
@@ -100,6 +105,8 @@ class Socks5InstallerApp(QWidget):
         layout.addWidget(self.input_ips)
         layout.addWidget(self.label_pass)
         layout.addWidget(self.input_password)
+        layout.addWidget(self.label_user)
+        layout.addWidget(self.input_user)
         layout.addWidget(self.button_start)
         layout.addWidget(self.output_box)
 
@@ -109,6 +116,7 @@ class Socks5InstallerApp(QWidget):
         QTimer.singleShot(0, lambda: self.output_box.append(text))
 
     def start_install(self):
+        username = self.input_user.text().strip() or "root"
         ip_list = self.input_ips.toPlainText().strip().splitlines()
         password = self.input_password.text().strip()
 
@@ -120,7 +128,7 @@ class Socks5InstallerApp(QWidget):
         self.log_output("⏳ Bắt đầu cài đặt SOCKS5...")
 
         # Khởi động thread background
-        self.worker = Worker(ip_list, password)
+        self.worker = Worker(ip_list, password, username)
         self.thread = QThread()
         self.worker.moveToThread(self.thread)
 
