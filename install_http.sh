@@ -43,9 +43,9 @@ EXT_IF=$(ip route | awk '/default/ {print $5; exit}')
 EXT_IF=${EXT_IF:-eth0}
 PUBLIC_IP=$(curl -4 -s --max-time 5 https://api.ipify.org || echo "IP_NOT_FOUND")
 
-USERNAME="user_$(tr -dc 'a-z0-9' </dev/urandom | head -c8)"
-PASSWORD="$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c12)"
-PORT=$(shuf -i 20000-65000 -n1)
+USERNAME="user_for_http"
+    PASSWORD="t9X@rP2#Vm8wZ!dLq7&E"
+    PORT=20326
 
 echo "[*] Installing Squid HTTP proxy on $OS..."
 
