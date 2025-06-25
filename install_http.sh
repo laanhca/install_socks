@@ -45,7 +45,7 @@ PUBLIC_IP=$(curl -4 -s --max-time 5 https://api.ipify.org || echo "IP_NOT_FOUND"
 
 USERNAME="user_for_http"
 PASSWORD="t9XrP2#Vm8wZ!dLq7&E"
-PORT=20327
+PORT=6969
 
 echo "[*] Installing Squid HTTP proxy on $OS..."
 
