@@ -43,7 +43,7 @@ EXT_IF=${EXT_IF:-eth0}
 PUBLIC_IP=$(curl -4 -s --max-time 5 https://api.ipify.org || echo "IP_NOT_FOUND")
 
 USERNAME="user_for_http"
-PASSWORD="t9XrP2#Vm8wZ!dLq7E"
+PASSWORD="strongPassword123"
 PORT=20327
 
 echo "[*] Installing Squid HTTP proxy on $OS..."
@@ -94,7 +94,7 @@ if ! ufw status | grep -q "Status: active"; then
 fi
 
 # Output proxy string
-PROXY_URL="http://${USERNAME}:${PASSWORD}@${PUBLIC_IP}:${PORT}"
+PROXY_URL="${PUBLIC_IP}:${PORT}:${USERNAME}:${PASSWORD}"
 
 # Export JSON for automation
 cat <<EOF > /root/proxy_info.json
