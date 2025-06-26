@@ -31,39 +31,35 @@ if [ -f /etc/os-release ]; then
     . /etc/os-release
     case "$ID" in
         ubuntu|debian) OS="debian" ;;
-        amzn|centos|rhel|rocky|almalinux) OS="redhat" ;;
         *) echo "❌ Unsupported OS: $ID"; exit 1 ;;
     esac
 else
     echo "❌ Cannot detect OS."; exit 1
 fi
 
-# Detect external interface and IP
+# Detect external IP
 EXT_IF=$(ip route | awk '/default/ {print $5; exit}')
 EXT_IF=${EXT_IF:-eth0}
 PUBLIC_IP=$(curl -4 -s --max-time 5 https://api.ipify.org || echo "IP_NOT_FOUND")
 
 USERNAME="user_for_http"
-PASSWORD="t9XrP2#Vm8wZ!dLq7&E"
-PORT=6969
+PASSWORD="t9XrP2#Vm8wZ!dLq7E"
+PORT=20327
 
 echo "[*] Installing Squid HTTP proxy on $OS..."
 
-if [ "$OS" = "debian" ]; then
-    apt-get update -y
-    DEBIAN_FRONTEND=noninteractive apt-get install -y squid apache2-utils curl iptables iptables-persistent
-else
-    yum install -y squid httpd-tools curl iptables-services
-    systemctl enable iptables
-    systemctl start iptables
-fi
+apt-get update -y
+DEBIAN_FRONTEND=noninteractive apt-get install -y squid apache2-utils curl ufw
 
 mkdir -p /etc/squid
 
+# Create user auth
 htpasswd -b -c /etc/squid/passwd "$USERNAME" "$PASSWORD"
 
+# Backup config
 cp /etc/squid/squid.conf /etc/squid/squid.conf.bak.$(date +%F_%T) || true
 
+# Generate minimal squid config with auth
 cat > /etc/squid/squid.conf <<EOF
 auth_param basic program /usr/lib/squid/basic_ncsa_auth /etc/squid/passwd
 auth_param basic realm Squid Proxy
@@ -82,12 +78,19 @@ chmod 644 /etc/squid/squid.conf
 systemctl restart squid
 systemctl enable squid
 
-# Open firewall
-if command -v ufw >/dev/null 2>&1; then
-    ufw allow "${PORT}/tcp" || true
-else
-    iptables -I INPUT -p tcp --dport "${PORT}" -j ACCEPT || true
-    iptables-save > /etc/iptables/rules.v4 || true
+# --- UFW firewall setup ---
+echo "[*] Configuring UFW firewall..."
+
+# Ensure SSH is allowed to prevent lockout
+ufw allow ssh || true
+
+# Allow proxy port
+ufw allow "${PORT}/tcp" || true
+
+# Enable ufw if not active
+if ! ufw status | grep -q "Status: active"; then
+    echo "[*] Enabling UFW..."
+    ufw --force enable
 fi
 
 # Output proxy string
