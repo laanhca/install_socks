@@ -44,7 +44,7 @@ EXT_IF=${EXT_IF:-eth0}
 PUBLIC_IP=$(curl -4 -s https://api.ipify.org)
 
 USERNAME="user_for_socks5"
-PASSWORD="t9XrP2#Vm8wZ!dLq7&E"
+PASSWORD="strongPassword123"
 PORT=20326
 
 # Install packages
